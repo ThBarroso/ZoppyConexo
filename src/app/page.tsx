@@ -3,6 +3,16 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import Popup from '../components/Popup';
 
+// Função para embaralhar os blocos
+const shuffleArray = (array: string[]) => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
 export default function Home() {
   const [name, setName] = useState('');
   const [score, setScore] = useState(0);
@@ -28,9 +38,11 @@ export default function Home() {
     'Análise de clientes',
   ]);
   const [attempts, setAttempts] = useState(0);
-  const [ranking, setRanking] = useState<{ name: string; attempts: number }[]>([]);
+  const [ranking, setRanking] = useState<{ name: string; points: number }[]>([]); // Atualizado para incluir 'points'
   const [showRanking, setShowRanking] = useState(false);
   const [popup, setPopup] = useState<{ title: string; message: string } | null>(null); // Estado para o popup
+  const [startTime, setStartTime] = useState<number | null>(null); // Armazena o tempo de início
+  const [gameFinished, setGameFinished] = useState(false); // Estado para controlar se o jogo terminou
 
   const groups = [
     {
@@ -70,7 +82,13 @@ export default function Home() {
   useEffect(() => {
     const storedRanking = localStorage.getItem('ranking');
     if (storedRanking) {
-      setRanking(JSON.parse(storedRanking));
+      const parsedRanking = JSON.parse(storedRanking);
+      if (Array.isArray(parsedRanking)) {
+        setRanking(parsedRanking.map((entry) => ({
+          name: entry.name,
+          points: entry.points || 0, // Garante que 'points' exista
+        })));
+      }
     }
   }, []);
 
@@ -89,9 +107,14 @@ export default function Home() {
     setAttempts(0);
     setSelectedWords([]);
     setConnectedGroups([]);
+    setWords(shuffleArray(words)); // Embaralha os blocos antes de começar o jogo
   };
 
   const handleSquareClick = (word: string) => {
+    if (!startTime) {
+      setStartTime(Date.now()); // Registra o tempo de início ao selecionar o primeiro quadrado
+    }
+
     if (selectedWords.includes(word)) {
       setSelectedWords(selectedWords.filter((w) => w !== word));
     } else {
@@ -107,16 +130,31 @@ export default function Home() {
     );
 
     if (matchedGroup) {
-      setConnectedGroups([...connectedGroups, matchedGroup]);
-      setScore(score + 10);
+      const endTime = Date.now();
+      const elapsedTime = (endTime - (startTime || endTime)) / 1000; // Tempo decorrido em segundos
+      setStartTime(null); // Reseta o tempo de início para o próximo grupo
+
+      // Calcula a pontuação com base no tempo decorrido
+      let points = 0;
+      if (elapsedTime <= 10) points = 20;
+      else if (elapsedTime <= 20) points = 15;
+      else if (elapsedTime <= 30) points = 10;
+      else if (elapsedTime <= 60) points = 5;
+      else points = 1;
+
+      setScore(score + points); // Atualiza a pontuação
+
+      // Adiciona o grupo conectado com o nome e palavras
+      setConnectedGroups([...connectedGroups, { name: matchedGroup.name, words: matchedGroup.words }]);
       setSelectedWords([]);
       const remainingWords = words.filter((word) => !matchedGroup.words.includes(word));
       setWords(remainingWords);
 
       // Verifica se todos os grupos foram conectados
       if (connectedGroups.length + 1 === groups.length) {
-        setRanking([...ranking, { name, attempts: attempts + 1 }]);
+        setRanking([...ranking, { name, points: score + points }]); // Adiciona o jogador ao ranking com 'points'
         setShowRanking(true); // Mostra a tela de ranking
+        setGameFinished(true); // Marca o jogo como terminado
       }
     } else {
       setPopup({
@@ -219,10 +257,10 @@ export default function Home() {
           <h1 className="text-4xl font-bold mb-4">Ranking</h1>
           <ul className="text-left">
             {ranking
-              .sort((a, b) => a.attempts - b.attempts)
+              .sort((a, b) => b.points - a.points) // Ordena por pontos em ordem decrescente
               .map((player, index) => (
                 <li key={index} className="mb-2">
-                  {index + 1}. {player.name} - {player.attempts} tentativas
+                  {index + 1}. {player.name} - {player.points} pontos
                 </li>
               ))}
           </ul>
@@ -256,45 +294,93 @@ export default function Home() {
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-4xl">
-          <div className="flex justify-between items-center mb-4">
-            <p className="text-lg">Jogador: {name}</p>
-            <p className="text-lg">Pontuação: {score}</p>
-            <p className="text-lg">Tentativas: {attempts}</p>
-          </div>
-          <div className="mb-4">
-            {connectedGroups.map((group, index) => (
-              <div
-                key={index}
-                className="bg-green-500 text-white p-4 rounded mb-2 shadow-lg"
-              >
-                <p className="font-bold">{group.name}</p>
-                <p>{group.words.join(', ')}</p>
+        <>
+          {gameFinished ? (
+            <div className="text-center">
+              <h2 className="text-2xl font-bold mb-4">Parabéns! Você completou o jogo!</h2>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => {
+                    setGameFinished(false); // Reseta o estado do jogo
+                    setGameStarted(false); // Volta para a tela inicial
+                    setName('');
+                    setWords([
+                      'Segmentação assertiva de público',
+                      'Personalização por comportamento',
+                      'Comunicação personalizada por perfil',
+                      'Segmentação RFM',
+                      'Comunicação em massa',
+                      'Templates validados',
+                      'Mensagens por multicanais',
+                      'Interação com usuários',
+                      'Automatização de estratégias',
+                      'Fluxos de mensagens personalizadas',
+                      'Personalização de jornadas',
+                      'Configuração de gatilhos',
+                      'Recência',
+                      'Frequência',
+                      'Valor monetário',
+                      'Análise de clientes',
+                    ]);
+                  }}
+                  className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white px-6 py-2 rounded font-bold"
+                >
+                  Voltar ao Início
+                </button>
+                <button
+                  onClick={() => {
+                    setGameFinished(false); // Reseta o estado do jogo
+                    setShowRanking(true); // Mostra o ranking
+                  }}
+                  className="bg-gradient-to-r from-green-500 to-green-700 text-white px-6 py-2 rounded font-bold"
+                >
+                  Ver Ranking
+                </button>
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-4 gap-4">
-            {words.map((word, index) => (
+            </div>
+          ) : (
+            // Renderização normal do jogo
+            <div className="w-full max-w-4xl">
+              <div className="flex justify-between items-center mb-4">
+                <p className="text-lg">Jogador: {name}</p>
+                <p className="text-lg">Pontuação: {score}</p>
+                <p className="text-lg">Tentativas: {attempts}</p>
+              </div>
+              <div className="mb-4">
+                {connectedGroups.map((group, index) => (
+                  <div
+                    key={index}
+                    className="bg-green-500 text-white p-4 rounded mb-2 shadow-lg"
+                  >
+                    <p className="font-bold">{group.name}</p>
+                    <p>{group.words.join(', ')}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-4 gap-4">
+                {words.map((word, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSquareClick(word)}
+                    className={`p-4 rounded shadow ${
+                      selectedWords.includes(word)
+                        ? 'bg-yellow-300 text-black border-4 border-yellow-500'
+                        : 'bg-blue-600 text-white'
+                    } hover:bg-gray-200`}
+                  >
+                    {word}
+                  </button>
+                ))}
+              </div>
               <button
-                key={index}
-                onClick={() => handleSquareClick(word)}
-                className={`p-4 rounded shadow ${
-                  selectedWords.includes(word)
-                    ? 'bg-yellow-300 text-black border-4 border-yellow-500' // Fundo amarelo ao ser clicado
-                    : 'bg-blue-600 text-white' // Fundo azul por padrão
-                } hover:bg-gray-200`}
+                onClick={handleSubmit}
+                className="mt-4 bg-gradient-to-r from-green-500 to-green-700 text-white px-6 py-2 rounded font-bold"
               >
-                {word}
+                Enviar Grupo
               </button>
-            ))}
-          </div>
-          <button
-            onClick={handleSubmit}
-            className="mt-4 bg-gradient-to-r from-green-500 to-green-700 text-white px-6 py-2 rounded font-bold"
-          >
-            Enviar Grupo
-          </button>
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
